@@ -1,6 +1,37 @@
+#CUDA
 *.i
 *.ii
 *.gpu
 *.ptx
 *.cubin
 *.fatbin
+
+#Additional tests, not used for CI
+tests/*/*.scm
+tests/*/first*
+tests/*/#*
+tests/1536/*
+tests/1792/*
+tests/1888/*
+tests/1904/*
+tests/1909/*
+tests/1910/*
+tests/1912/*
+tests/1920/*
+tests/2048/*
+
+#Corresponding results
+res/1536
+res/1792
+res/1888
+res/1904
+res/1909
+res/1910
+res/1912
+res/1920
+res/2048
+
+#Binaries
+main
+compare_stores
+wcfa
