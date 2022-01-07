@@ -1,7 +1,9 @@
 //Constants for the implementation
 #ifndef CONST_H
 
-#define NUM_NOT_FOUND -42
+#define NUM_NOT_FOUND -1
+#define NUM_BLOCK 1
+#define NUM_THREAD 100
 
 #define INPUT_DIR "./tests/"
 #define OUTPUT_DIR "./res/"

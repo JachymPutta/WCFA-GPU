@@ -2,10 +2,7 @@
 #include <algorithm>
 #include <stdio.h>
 #include <string.h>
-#include <map>
 #include <vector>
-#include <set>
-#include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 
 #include <iostream>
@@ -25,50 +22,34 @@ void populateMatrix(int* matrix, int rows, int cols, const char* path) {
   fclose(fp);
 }
 
-void addOrAppend(std::map<int, std::vector<int>> &deps, int key, int value) {
+void populateStore (int* store, int cols, int lams, int vals) {
+  memset(store, -1, vals * cols * sizeof(int));
+
+  for (int i = 0; i < lams; i++) {
+    store[i*cols + 0] = 2;
+    store[i*cols + 1] = i;
+  }
+  for (int i = lams; i < vals; i++) {
+    store[i*cols + 0] = 1;
+  }
 }
 
-void makeDepGraph(std::map<int, std::vector<int>> &deps, int* arg1, int* arg2, int callfun[], int calls) {
+void adOrAp(int deps[], int row, int value) {
 }
 
-void update(std::set<int> store[],std::queue<int> &workList, std::map<int, std::vector<int>> &deps, int arg, int var, int callsite) {
+void makeDepGraph(int dp[], int ar1[], int ar2[], int cf[], int calls) {
+
 }
 
-void runAnalysis(std::set<int> store[], int arg1Vec[], int arg2Vec[], int callFun[], std::map<int, std::vector<int>> &deps, int calls, int lams) {
+__device__ void addOrAppend(int * matrix, int key, int value) {
+}
 
-    // H has storage for 4 integers
-    thrust::host_vector<int> H(4);
 
-    // initialize individual elements
-    H[0] = 14;
-    H[1] = 20;
-    H[2] = 38;
-    H[3] = 46;
-    
-    // H.size() returns the size of vector H
-    std::cout << "H has size " << H.size() << std::endl;
+__device__ void update(std::set<int> store[],std::queue<int> &workList, std::map<int, std::vector<int>> &deps, int arg, int var, int callsite) {
+}
 
-    // print contents of H
-    for(int i = 0; i < H.size(); i++)
-        std::cout << "H[" << i << "] = " << H[i] << std::endl;
+__global__ void runAnalysis(int ar1[], int ar2[], int cf[], int calls, int lams, int vals, int rowSize) {
 
-    // resize H
-    H.resize(2);
-    
-    std::cout << "H now has size " << H.size() << std::endl;
-
-    // Copy host_vector H to device_vector D
-    thrust::device_vector<int> D = H;
-    
-    // elements of D can be modified
-    D[0] = 99;
-    D[1] = 88;
-    
-    // print contents of D
-    for(int i = 0; i < D.size(); i++) {
-        std::cout << "D[" << i << "] = " << D[i] << std::endl;
-    }
-    // H and D are automatically deleted when the function returns
 }
 
 int main(int argc, char** argv) {
@@ -86,8 +67,6 @@ int main(int argc, char** argv) {
   std::string arg1Path = INPUT_DIR + testId + ARG1_PATH;
   std::string arg2Path = INPUT_DIR + testId + ARG2_PATH;
   std::string funPath = INPUT_DIR + testId + FUN_PATH;
-  // fprintf(stdout, "outPath = %s, paramPath = %s, arg1P = %s, arg2P = %s, funP  = %s",
-  //         outputPath.c_str(), paramsPath.c_str(), arg1Path.c_str(), arg2Path.c_str(), funPath.c_str());
 
   int lams, vars, calls;
   {
@@ -97,6 +76,8 @@ int main(int argc, char** argv) {
   }
 
   const int vals = 3 * lams;
+  const int rowSize = std::max(lams/10, 10);
+  const int storeSize = vals * rowSize * sizeof(int);
 
   // fprintf (stderr, "Program parameters\n");
   // fprintf (stderr, "------------------\n");
@@ -104,16 +85,14 @@ int main(int argc, char** argv) {
 	// 	   "lams: %d\nvars: %d\nvals: %d\ncalls: %d\nterms: %d\n",
 	// 	   lams, vars, vals, calls, lams+vars+calls);
 
-  std::map<int, std::vector<int>> deps;
+  int *store = (int*)malloc(storeSize);
+  int *deps = (int*)malloc(storeSize);
   int *callFun = (int*)malloc(calls * sizeof(int));
   int *callArg1 = (int*)malloc(calls * sizeof(int));
   int *callArg2 = (int*)malloc(calls * sizeof(int));
 
-  //Populate store
-  std::set<int> store[vals];
-  for (int i = 0; i < lams; i++) {
-    store[i].insert(i);
-  }
+  // Populate store
+  populateStore(store, rowSize, lams, vals);
 
   // Read in the FUN matrix
   // fprintf(stderr, "Reading CALLFUN (%d x %d) ... ", calls, 1);
@@ -136,24 +115,47 @@ int main(int argc, char** argv) {
 
   // Construct the dependency graph
   // fprintf(stderr, "Constructing dependency graph (%d x %d) ... ", calls, 1);
-  makeDepGraph(deps,callArg1, callArg2, callFun, calls);
+  makeDepGraph(deps, callArg1, callArg2, callFun, calls);
   // fprintf(stderr, "Graph constructed\n");
   // printDeps(deps);
 
+  // Move data to the device
+  int *dp, *st, *cf, *a1, *a2;
+  cudaMalloc((void**)&a1, calls*sizeof(int));
+  cudaMalloc((void**)&a2, calls*sizeof(int));
+  cudaMalloc((void**)&cf, calls*sizeof(int));
+  cudaMalloc((void**)&dp, storeSize);
+  cudaMalloc((void**)&st, storeSize);
+
+  cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
+  cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
+
   // Run the analysis
-  runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams);
+  runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(callArg1, callArg2, callFun, calls, lams, vals, rowSize);
   // printStore(store, vals);
   // printDeps(deps);
-
-  // Deallocate memory -- Causes error with unfinished algorithm
-  free(callFun);
-  free(callArg1);
-  free(callArg2);
 
   // Write out the result
   // fprintf(stderr, "Writing %s\n", outputPath.c_str());
   // FILE* resFp = fopen(outputPath.c_str(), "w");
   // reformatStore(store, vals, resFp);
   // fclose(resFp);
+
+  // Deallocate memory
+  cudaFree(a1);
+  cudaFree(a2);
+  cudaFree(cf);
+  cudaFree(dp);
+  cudaFree(st);
+  
+  free(callArg1);
+  free(callArg2);
+  free(callFun);
+  // free(deps);
+  // free(store);
+
   return EXIT_SUCCESS;
 }
