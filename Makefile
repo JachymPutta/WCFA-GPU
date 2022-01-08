@@ -1,6 +1,6 @@
 CC = nvcc
 
-CFLAGS = util.cpp -g -O3
+CFLAGS = util.cpp -g
 
 TARGET = wcfa
 

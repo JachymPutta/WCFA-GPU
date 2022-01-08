@@ -34,7 +34,7 @@ void populateStore (int* store, int cols, int lams, int vals) {
   }
 }
 
-void adOrAp(int deps[], int row, int value, int rowSize) {
+void addElem(int deps[], int row, int value, int rowSize) {
   int index = row * rowSize;
   int numEls = deps[index];
   // fprintf(stdout, "Value = %d, Index = %d, Row = %d, Numels = %d before\n", value, index, row, numEls);
@@ -56,21 +56,132 @@ void makeDepGraph(int dp[], int ar1[], int ar2[], int cf[], int calls, int store
     dp[i*rowSize] = 0;
   }
   for (int i = 0; i < calls; i++) {
-    adOrAp(dp, ar1[i], i, rowSize);
-    adOrAp(dp, ar2[i], i, rowSize);
-    adOrAp(dp, cf[i], i, rowSize);
+    addElem(dp, ar1[i], i, rowSize);
+    addElem(dp, ar2[i], i, rowSize);
+    addElem(dp, cf[i], i, rowSize);
   }
 }
 
-__device__ void addOrAppend(int * matrix, int key, int value) {
+__device__ int dAddElem(int matrix[], int row, int value, int rowSize) {
+  int index = row * rowSize;
+  int numEls = matrix[index];
+  for (int i = index + 1; i < (index + numEls + 1); i++) {
+    // fprintf(stdout, "Checking index %d = %d; value = %d", i, deps[i], value);
+    if (matrix[i] == value || matrix[i] == NUM_NOT_FOUND){
+      return 1;
+    }
+  }
+  if (atomicCAS(&matrix[index], numEls, numEls+1)) {
+    matrix[index + numEls + 1] = value;
+    return 0;
+  }
+  return 1;
 }
 
+// void fsUnion (int v1[], int v2[]) {
+  // int s1 = v1[0];
+  // int s2 = v2[0];
+  // int size = s1 + s2;
+  // int * res = (int*)malloc(size * sizeof(int));
+  // memset(res, NUM_NOT_FOUND, size * sizeof(int));
+//
+  // for (int i = 1; i < s1; i++) {
+    // res[i] = v1[i];
+  // }
+  // for (int i = 1; i < s2; i++) {
+    // bool found = 0;
+    // for (int j = 0; j < s1; j++) {
+      // if (res[j] == v2[i]) {
+        // found = 1;
+        // break;
+      // }
+    // }
+    // if (!found) {
+    // res[size] = v2[i];
+    // size ++;
+    // }
+  // }
+  // thrust::sort(thrust::seq, res, res + s1 + s2);
+//
+  // for (int i = 1; i < size; i++) {
+//
+  // }
+  // free(res);
+// }
 
-__device__ void update(std::set<int> store[],std::queue<int> &workList, std::map<int, std::vector<int>> &deps, int arg, int var, int callsite) {
+void update(int st[], int dp[], std::queue<int> worklist, int arg, int var, int callsite, int rowSize) {
+  int idv = var * rowSize; 
+  int ida = arg * rowSize; 
+  int sv = st[idv];
+  int sa = st[ida];
+  int size = sv;
+  int * res = (int*)malloc((sv + sa) * sizeof(int));
+  memset(res, NUM_NOT_FOUND,(sv + sa) * sizeof(int));
+
+  for (int i = 1; i < sv; i++) {
+    res[i] = (st + idv)[i];
+  }
+  for (int i = 1; i < sa; i++) {
+    bool found = 0;
+    for (int j = 0; j < sv; j++) {
+      if (res[j] == (st + ida)[i]) {
+        found = 1;
+        break;
+      }
+    }
+    if (!found) {
+    res[size] = (st + ida)[i];
+    size ++;
+    }
+  }
+  // thrust::sort(thrust::seq, res, res + sv + sa);
+  thrust::sort(res, res + sv + sa);
+
+  if (size != sv) {
+    st[idv] = size;
+    for (int i = idv + 1 ; i < idv + size + 1; i++) {
+      st[i] = res[i];
+    }
+    int ds = dp[idv]; 
+    for (int i = idv + 1; i<idv + ds; i++) {
+      //TODO: Change this to the device function? 
+      addElem(dp, var, dp[i], rowSize);      
+      worklist.push(dp[i]);
+    }
+    //TODO: PUSH STUFF TO WORKLIST
+  }
+  free(res);
 }
 
-__global__ void runAnalysis(int ar1[], int ar2[], int cf[], int calls, int lams, int vals, int rowSize) {
+void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int calls, int lams, int vals, int rowSize) {
+  //TODO: Worklist stuff!
+  std::queue<int> worklist;
+  for (int i = 0; i < calls; i++) {
+    worklist.push(i);
+  }
+  int iter = 0;
 
+  while (!worklist.empty()) {
+    int callSite = worklist.front();
+    worklist.pop();
+
+    int fun = cf[callSite];
+    int arg1 = ar1[callSite];
+    int arg2 = ar2[callSite];
+
+    int idf = fun * rowSize;
+    int nef = st[idf];
+    for(int i = idf + 1; i < idf + nef + 1; i++) {
+      int var1 = st[i] + lams;
+      int var2 = st[i] + 2 * lams; 
+
+      update(st, dp, worklist, arg1, var1, callSite, rowSize);
+      update(st, dp, worklist, arg2, var2, callSite, rowSize);
+    }
+    iter ++;
+    fprintf(stdout, "Worklist after iter %d\n", iter);
+    printQ(worklist);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -157,9 +268,15 @@ int main(int argc, char** argv) {
   cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
 
   // Run the analysis
-  runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(callArg1, callArg2, callFun, calls, lams, vals, rowSize);
+  // runAnalysis(a1, a2, cf, calls, lams, vals, rowSize);
+  runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams, vals, rowSize);
+  printMatrix(store, vals, rowSize);
   // printStore(store, vals);
   // printDeps(deps);
+
+  // cudaMemcpy(callArg1, a1, calls*sizeof(int), cudaMemcpyDeviceToHost);
+  // cudaDeviceSynchronize();
+  // printMatrix(callArg1, 1, calls);
 
   // Write out the result
   // fprintf(stderr, "Writing %s\n", outputPath.c_str());
@@ -177,8 +294,8 @@ int main(int argc, char** argv) {
   free(callArg1);
   free(callArg2);
   free(callFun);
-  // free(deps);
-  // free(store);
+  free(deps);
+  free(store);
 
   return EXIT_SUCCESS;
 }
