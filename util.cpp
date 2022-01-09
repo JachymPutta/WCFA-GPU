@@ -17,21 +17,20 @@ int readToken(FILE *fp, int curr) {
   return readToken(fp, curr == NUM_NOT_FOUND ? val : curr * 10 + val);
 }
 
-void reformatStore (std::set<int> store[], int rows, FILE* handle) {
+void reformatStore (int* store, int rows, int cols, FILE* handle) {
   fprintf(handle, "#hash(");
-  for (int i = 0; i < rows; i++){
-    int h = 0;
-    int m = store[i].size() - 1;
+  for (int i = 0; i < rows; i++) {
+    int bindings = store[i*cols + 0] - 1;
     fprintf (handle, "(%d . (", i);
-    for (auto x : store[i]) {
-      if (h < m){
-        fprintf(handle, "%d ", x); 
-      } else{
-        fprintf(handle, "%d", x);
-      }
-      h++;
+    int j = 1;
+    for (; j < bindings; j++) {
+      fprintf(handle, "%d ", store[i*cols + j]);
     }
-    fprintf(handle, "))");
+    if (j <= bindings) {
+      fprintf(handle, "%d))", store[i*cols + bindings]);
+    } else {
+      fprintf(handle, "))");
+    }
   }
   fprintf(handle, ")");
 }

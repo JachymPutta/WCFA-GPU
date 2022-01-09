@@ -18,6 +18,6 @@ void printSet(std::set<int> set);
 void printStore(std::set<int> store[], int rows);
 void pushRange(std::queue<int> &q, std::vector<int>::iterator begin, std::vector<int>::iterator end);
 int readToken(FILE *fp, int curr);
-void reformatStore(std::set<int> store[], int rows, FILE *handle);
+void reformatStore(int store[], int rows, int cols, FILE *handle);
 
 #endif
