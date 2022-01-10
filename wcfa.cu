@@ -1,11 +1,8 @@
 #include <bits/types/FILE.h>
-#include <algorithm>
 #include <stdio.h>
 #include <string.h>
-#include <vector>
-#include <thrust/device_vector.h>
-
 #include <iostream>
+
 #include "const.h"
 #include "util.h"
 
@@ -78,37 +75,6 @@ __device__ int dAddElem(int matrix[], int row, int value, int rowSize) {
   return 1;
 }
 
-// void fsUnion (int v1[], int v2[]) {
-  // int s1 = v1[0];
-  // int s2 = v2[0];
-  // int size = s1 + s2;
-  // int * res = (int*)malloc(size * sizeof(int));
-  // memset(res, NUM_NOT_FOUND, size * sizeof(int));
-//
-  // for (int i = 1; i < s1; i++) {
-    // res[i] = v1[i];
-  // }
-  // for (int i = 1; i < s2; i++) {
-    // bool found = 0;
-    // for (int j = 0; j < s1; j++) {
-      // if (res[j] == v2[i]) {
-        // found = 1;
-        // break;
-      // }
-    // }
-    // if (!found) {
-    // res[size] = v2[i];
-    // size ++;
-    // }
-  // }
-  // thrust::sort(thrust::seq, res, res + s1 + s2);
-//
-  // for (int i = 1; i < size; i++) {
-//
-  // }
-  // free(res);
-// }
-
 void update(int st[], int dp[], std::queue<int> &worklist, int arg, int var, int callsite, int rowSize) {
   int idv = var * rowSize; 
   int ida = arg * rowSize; 
@@ -142,8 +108,6 @@ void update(int st[], int dp[], std::queue<int> &worklist, int arg, int var, int
     size ++;
     }
   }
-  // thrust::sort(thrust::seq, res, res + sv + sa);
-  // thrust::sort(res, res + sv + sa);
   size++;
   if (size != sv) {
     int ii = 0;
@@ -276,26 +240,25 @@ int main(int argc, char** argv) {
   // printMatrix(deps, vals, rowSize);
 
   // Move data to the device
-  int *dp, *st, *cf, *a1, *a2;
-  cudaMalloc((void**)&a1, calls*sizeof(int));
-  cudaMalloc((void**)&a2, calls*sizeof(int));
-  cudaMalloc((void**)&cf, calls*sizeof(int));
-  cudaMalloc((void**)&dp, storeSize);
-  cudaMalloc((void**)&st, storeSize);
-
-  cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
-  cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
+  // int *dp, *st, *cf, *a1, *a2;
+  // cudaMalloc((void**)&a1, calls*sizeof(int));
+  // cudaMalloc((void**)&a2, calls*sizeof(int));
+  // cudaMalloc((void**)&cf, calls*sizeof(int));
+  // cudaMalloc((void**)&dp, storeSize);
+  // cudaMalloc((void**)&st, storeSize);
+  //
+  // cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
+  // cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
+  // cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
+  // cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
+  // cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
 
   // Run the analysis
   // runAnalysis(a1, a2, cf, calls, lams, vals, rowSize);
   // printMatrix(deps, vals, rowSize);
   runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams, vals, rowSize);
   // printMatrix(store, vals, rowSize);
-  // printStore(store, vals);
-  // printDeps(deps);
+  // printMatrix(deps, vals, rowSize);
 
   // cudaMemcpy(callArg1, a1, calls*sizeof(int), cudaMemcpyDeviceToHost);
   // cudaDeviceSynchronize();
@@ -308,12 +271,12 @@ int main(int argc, char** argv) {
   fclose(resFp);
 
   // Deallocate memory
-  cudaFree(a1);
-  cudaFree(a2);
-  cudaFree(cf);
-  cudaFree(dp);
-  cudaFree(st);
-  
+  // cudaFree(a1);
+  // cudaFree(a2);
+  // cudaFree(cf);
+  // cudaFree(dp);
+  // cudaFree(st);
+
   free(callArg1);
   free(callArg2);
   free(callFun);
