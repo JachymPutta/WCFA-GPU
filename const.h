@@ -1,9 +1,13 @@
 //Constants for the implementation
 #ifndef CONST_H
 
+#define NUM_SM 4 // no. of streaming multiprocessors
+#define NUM_WARP_PER_SM 48 // maximum no. of resident warps per SM
+#define NUM_BLOCK_PER_SM 8 // maximum no. of resident blocks per SM
+#define NUM_BLOCK NUM_SM * NUM_BLOCK_PER_SM
+#define NUM_WARP_PER_BLOCK NUM_WARP_PER_SM / NUM_BLOCK_PER_SM
+#define WARP_SIZE 32
 #define NUM_NOT_FOUND -42
-#define NUM_BLOCK 1
-#define NUM_THREAD 100
 
 #define INPUT_DIR "./tests/"
 #define OUTPUT_DIR "./res/"

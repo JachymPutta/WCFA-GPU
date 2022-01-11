@@ -1,4 +1,5 @@
 #include <bits/types/FILE.h>
+#include <cstdlib>
 #include <stdio.h>
 #include <string.h>
 #include <iostream>
@@ -6,7 +7,7 @@
 #include "const.h"
 #include "util.h"
 
-void populateMatrix(int* matrix, int rows, int cols, const char* path) {
+void populateMatrix(int matrix[], int rows, int cols, const char path[]) {
   FILE* fp = fopen(path, "r");
   int token = readToken(fp, NUM_NOT_FOUND);
   for (int i = 0; token != EOF; ) {
@@ -19,7 +20,7 @@ void populateMatrix(int* matrix, int rows, int cols, const char* path) {
   fclose(fp);
 }
 
-void populateStore (int* store, int cols, int lams, int vals) {
+void populateStore (int store[], int cols, int lams, int vals) {
   memset(store, NUM_NOT_FOUND, vals * cols * sizeof(int));
 
   for (int i = 0; i < lams; i++) {
@@ -124,12 +125,9 @@ __device__ void update(int st[], int dp[], bool worklist[], int arg, int var, in
     for (int i = idv + 1; i<idv + ds; i++) {
       // fprintf(stdout, "Adding elem %d to row %d\n", dp[i], var);
       // printArray(dp + idv, ds);
-      //TODO: Change this to the device function?
       dAddElem(dp, var, dp[i], rowSize);
       worklist[dp[i]] = 1;
-      wlSize++;
     }
-    //TODO: PUSH STUFF TO WORKLIST
   }
   // fprintf(stdout, "Updated: var and arg rows\n");
   // printArray(res, size -1);
@@ -155,26 +153,58 @@ __device__ void handleSite(int st[], int ar1[], int ar2[], int cf[], int dp[],
     }
 }
 
+
+__device__ unsigned int headDev = 0;
+
 __global__ void runIter(int st[], int ar1[], int ar2[], int cf[], int dp[], int
-        worklist[], int lams, int vals, int rowSize, int wlSize) {
+        worklist[], bool newWl[], int lams, int vals, int rowSize, int wlSize) {
     /* Run the current iteration of the worklist, distribute the callsites */
+    	// warp-wise head index of tasks in a block
+	__shared__ volatile unsigned int headBlock[NUM_WARP_PER_BLOCK];
+
+	volatile unsigned int& headWarp = headBlock[threadIdx.y];
+	do
+	{
+		// let lane 0 fetch [wh, wh + WARP_SIZE - 1] for a warp
+		if (threadIdx.x == 0) {
+			headWarp = atomicAdd(&headDev, WARP_SIZE);
+
+		}
+		// task index per thread in a warp
+		unsigned int taskIdx = headWarp + threadIdx.x;
+
+		if (taskIdx >= wlSize) {
+			return;
+		}
+
+		handleSite(st, ar1, ar2, cf, dp, lams, vals, rowSize, worklist[taskIdx], newWl,
+                wlSize);
+	} while (true);
 }
 
 void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int worklist[], int calls, int lams,
         int vals, int rowSize) {
     int wlSize = calls;
-    int *newWl = (int*)malloc(calls);
+    bool *newWl = (bool*)malloc(calls);
 
     for(int i = 0; i < wlSize; i++) {
         worklist[i] = i;
     }
     while (wlSize != 0) {
-        memset(newWl, 0, calls * sizeof(int));
-        runIter<<<NUM_BLOCK, NUM_THREAD>>>(st, ar1, ar2, cf, dp, worklist, lams, vals,
+        memset(newWl, 0, calls * sizeof(bool));
+        runIter<<<NUM_BLOCK, dim3(WARP_SIZE, NUM_WARP_PER_BLOCK)>>>(st, ar1, ar2, cf, dp, worklist, newWl, lams, vals,
                 rowSize, wlSize);
         cudaDeviceSynchronize();
-        // Reset external containers
+        wlSize = 0;
+        headDev = 0;
+        for(int i = 0; i < calls; i++) {
+            if(newWl[i]) {
+                worklist[wlSize] = i;
+                wlSize++;
+            }
+        }
     }
+    free(newWl);
 }
 
 int main(int argc, char** argv) {
@@ -247,10 +277,11 @@ int main(int argc, char** argv) {
   // printMatrix(deps, vals, rowSize);
 
   // Move data to the device
-  int *dp, *st, *cf, *a1, *a2;
+  int *dp, *st, *cf, *a1, *a2, *worklist;
   cudaMalloc((void**)&a1, calls*sizeof(int));
   cudaMalloc((void**)&a2, calls*sizeof(int));
   cudaMalloc((void**)&cf, calls*sizeof(int));
+  cudaMalloc((void**)&worklist, calls*sizeof(int));
   cudaMalloc((void**)&dp, storeSize);
   cudaMalloc((void**)&st, storeSize);
 
@@ -260,11 +291,13 @@ int main(int argc, char** argv) {
   cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
   cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
 
+  cudaMemset(worklist, NUM_NOT_FOUND, calls*sizeof(int));
   // Run the analysis
   // runAnalysis(a1, a2, cf, calls, lams, vals, rowSize);
   // printMatrix(deps, vals, rowSize);
   // runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams, vals, rowSize);
-  runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(st, a1, a2, cf, dp, calls, lams, vals, rowSize);
+  /* runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(st, a1, a2, cf, dp, calls, lams, vals, rowSize); */
+  runAnalysis(st, a1, a2, cf, dp, worklist, calls, lams, vals, rowSize);
   // printMatrix(store, vals, rowSize);
   // printMatrix(deps, vals, rowSize);
 
@@ -279,11 +312,12 @@ int main(int argc, char** argv) {
   fclose(resFp);
 
   // Deallocate memory
-  // cudaFree(a1);
-  // cudaFree(a2);
-  // cudaFree(cf);
-  // cudaFree(dp);
-  // cudaFree(st);
+  cudaFree(a1);
+  cudaFree(a2);
+  cudaFree(cf);
+  cudaFree(dp);
+  cudaFree(st);
+  cudaFree(worklist);
 
   free(callArg1);
   free(callArg2);
