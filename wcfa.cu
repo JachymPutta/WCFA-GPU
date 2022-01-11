@@ -75,9 +75,10 @@ __device__ int dAddElem(int matrix[], int row, int value, int rowSize) {
   return 1;
 }
 
-void update(int st[], int dp[], std::queue<int> &worklist, int arg, int var, int callsite, int rowSize) {
-  int idv = var * rowSize; 
-  int ida = arg * rowSize; 
+__device__ void update(int st[], int dp[], bool worklist[], int arg, int var, int
+        callsite, int rowSize, int wlSize) {
+  int idv = var * rowSize;
+  int ida = arg * rowSize;
   int sv = st[idv];
   int sa = st[ida];
   int size = sv - 1;
@@ -117,15 +118,16 @@ void update(int st[], int dp[], std::queue<int> &worklist, int arg, int var, int
       st[i] = res[ii];
       ii++;
     }
-    int ds = dp[idv]; 
+    int ds = dp[idv];
     // fprintf(stdout, "Adding row to worklist:\n");
     // printArray(dp +idv, ds);
     for (int i = idv + 1; i<idv + ds; i++) {
       // fprintf(stdout, "Adding elem %d to row %d\n", dp[i], var);
       // printArray(dp + idv, ds);
-      //TODO: Change this to the device function? 
-      addElem(dp, var, dp[i], rowSize);      
-      worklist.push(dp[i]);
+      //TODO: Change this to the device function?
+      dAddElem(dp, var, dp[i], rowSize);
+      worklist[dp[i]] = 1;
+      wlSize++;
     }
     //TODO: PUSH STUFF TO WORKLIST
   }
@@ -136,38 +138,43 @@ void update(int st[], int dp[], std::queue<int> &worklist, int arg, int var, int
   free(res);
 }
 
-void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int calls, int lams, int vals, int rowSize) {
-  //TODO: Worklist stuff!
-  std::queue<int> worklist;
-  for (int i = 0; i < calls; i++) {
-    worklist.push(i);
-  }
-  int iter = 0;
-
-  while (!worklist.empty()) {
-    int callSite = worklist.front();
-    worklist.pop();
-
+__device__ void handleSite(int st[], int ar1[], int ar2[], int cf[], int dp[],
+        int lams, int vals, int rowSize, int callSite, bool newWl[], int wlSize) {
     int fun = cf[callSite];
     int arg1 = ar1[callSite];
     int arg2 = ar2[callSite];
-
     int idf = fun * rowSize;
     int nef = st[idf];
+
     for(int i = idf + 1; i < idf + nef; i++) {
       int var1 = st[i] + lams;
-      int var2 = st[i] + 2 * lams; 
+      int var2 = st[i] + 2 * lams;
 
-      // fprintf(stdout, "Store row: \n");
-      // printArray(st + idf, nef);
-      // fprintf(stdout, "Working on - callsite: %d (a1 = %d, a2 = %d, f = %d)\n Flowset size = %d, Work on lam = %d => v1 = %d, v2 = %d\n", callSite, arg1, arg2, fun, nef, st[i], var1, var2);
-      update(st, dp, worklist, arg1, var1, callSite, rowSize);
-      update(st, dp, worklist, arg2, var2, callSite, rowSize);
+      update(st, dp, newWl, arg1, var1, callSite, rowSize, wlSize);
+      update(st, dp, newWl, arg2, var2, callSite, rowSize, wlSize);
     }
-    iter ++;
-    // fprintf(stdout, "Worklist after iter %d\n", iter);
-    // printQ(worklist);
-  }
+}
+
+__global__ void runIter(int st[], int ar1[], int ar2[], int cf[], int dp[], int
+        worklist[], int lams, int vals, int rowSize, int wlSize) {
+    /* Run the current iteration of the worklist, distribute the callsites */
+}
+
+void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int worklist[], int calls, int lams,
+        int vals, int rowSize) {
+    int wlSize = calls;
+    int *newWl = (int*)malloc(calls);
+
+    for(int i = 0; i < wlSize; i++) {
+        worklist[i] = i;
+    }
+    while (wlSize != 0) {
+        memset(newWl, 0, calls * sizeof(int));
+        runIter<<<NUM_BLOCK, NUM_THREAD>>>(st, ar1, ar2, cf, dp, worklist, lams, vals,
+                rowSize, wlSize);
+        cudaDeviceSynchronize();
+        // Reset external containers
+    }
 }
 
 int main(int argc, char** argv) {
@@ -240,23 +247,24 @@ int main(int argc, char** argv) {
   // printMatrix(deps, vals, rowSize);
 
   // Move data to the device
-  // int *dp, *st, *cf, *a1, *a2;
-  // cudaMalloc((void**)&a1, calls*sizeof(int));
-  // cudaMalloc((void**)&a2, calls*sizeof(int));
-  // cudaMalloc((void**)&cf, calls*sizeof(int));
-  // cudaMalloc((void**)&dp, storeSize);
-  // cudaMalloc((void**)&st, storeSize);
-  //
-  // cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
-  // cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
-  // cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
-  // cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
-  // cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
+  int *dp, *st, *cf, *a1, *a2;
+  cudaMalloc((void**)&a1, calls*sizeof(int));
+  cudaMalloc((void**)&a2, calls*sizeof(int));
+  cudaMalloc((void**)&cf, calls*sizeof(int));
+  cudaMalloc((void**)&dp, storeSize);
+  cudaMalloc((void**)&st, storeSize);
+
+  cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
+  cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
 
   // Run the analysis
   // runAnalysis(a1, a2, cf, calls, lams, vals, rowSize);
   // printMatrix(deps, vals, rowSize);
-  runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams, vals, rowSize);
+  // runAnalysis(store, callArg1, callArg2, callFun, deps, calls, lams, vals, rowSize);
+  runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(st, a1, a2, cf, dp, calls, lams, vals, rowSize);
   // printMatrix(store, vals, rowSize);
   // printMatrix(deps, vals, rowSize);
 
