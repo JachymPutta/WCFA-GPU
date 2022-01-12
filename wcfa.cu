@@ -174,6 +174,7 @@ __global__ void runIter(int st[], int ar1[], int ar2[], int cf[], int dp[], int
 		unsigned int taskIdx = headWarp + threadIdx.x;
 
 		if (taskIdx >= wlSize) {
+            headDev = 0;
 			return;
 		}
 
@@ -196,7 +197,6 @@ void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int worklis
                 rowSize, wlSize);
         cudaDeviceSynchronize();
         wlSize = 0;
-        headDev = 0;
         for(int i = 0; i < calls; i++) {
             if(newWl[i]) {
                 worklist[wlSize] = i;
