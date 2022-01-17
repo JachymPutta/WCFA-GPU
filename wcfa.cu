@@ -245,20 +245,42 @@ void runIter(int st[], int ar1[], int ar2[], int cf[], int dp[], int
         }
     }
 }
-void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int worklist[], int calls, int lams,
+void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int deps[],
+        int worklist[], bool newWl[], int calls, int lams,
         int vals, int rowSize) {
+
     int wlSize = calls;
-    bool *newWl = (bool*)malloc(calls * sizeof(bool));
+    int storeSize = vals * rowSize * sizeof(int);
+    /* Move data to the device */
+    int *dp, *st, *cf, *a1, *a2, *wl;
+    bool *dNewWl;
+    cudaMalloc((void**)&a1, calls*sizeof(int));
+    cudaMalloc((void**)&a2, calls*sizeof(int));
+    cudaMalloc((void**)&cf, calls*sizeof(int));
+    cudaMalloc((void**)&wl, calls*sizeof(int));
+    cudaMalloc((void**)&newWl, calls * sizeof(bool));
+    cudaMalloc((void**)&dp, storeSize);
+    cudaMalloc((void**)&st, storeSize);
+
+    cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemset(dNewWl, 0,  calls * sizeof(bool));
+    cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
 
     for(int i = 0; i < wlSize; i++) {
         worklist[i] = i;
     }
     while (wlSize != 0) {
-        memset(newWl, 0, calls * sizeof(bool));
-        /* dRunIter<<<NUM_BLOCK, dim3(WARP_SIZE, NUM_WARP_PER_BLOCK)>>>(st, ar1, ar2, cf, dp, worklist, newWl, lams, vals, */
-        /*         rowSize, wlSize); */
-        runIter(st, ar1, ar2, cf, dp, worklist, newWl, lams,  vals, rowSize, wlSize);
+        cudaMemcpy(wl, worklist, calls * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemset(dNewWl, 0,  calls * sizeof(bool));
+        dRunIter<<<NUM_BLOCK, dim3(WARP_SIZE, NUM_WARP_PER_BLOCK)>>>(st, a1, a2, cf, dp,
+                wl, dNewWl, lams, vals, rowSize, wlSize);
+        /* runIter(st, a1, a2, cf, dp, worklist, newWl, lams,  vals, rowSize, wlSize); */
+        cudaMemcpy(newWl, dNewWl, calls * sizeof(bool), cudaMemcpyDeviceToHost);
         cudaDeviceSynchronize();
+
         wlSize = 0;
         for(int i = 0; i < calls; i++) {
             if(newWl[i]) {
@@ -267,7 +289,13 @@ void runAnalysis(int st[], int ar1[], int ar2[], int cf[], int dp[], int worklis
             }
         }
     }
-    free(newWl);
+    cudaFree(a1);
+    cudaFree(a2);
+    cudaFree(cf);
+    cudaFree(dp);
+    cudaFree(st);
+    cudaFree(wl);
+    cudaFree(dNewWl);
 }
 
 int main(int argc, char** argv) {
@@ -311,6 +339,7 @@ int main(int argc, char** argv) {
   int *callFun = (int*)malloc(calls * sizeof(int));
   int *callArg1 = (int*)malloc(calls * sizeof(int));
   int *callArg2 = (int*)malloc(calls * sizeof(int));
+  bool *newWl = (bool*)calloc(calls, calls * sizeof(bool));
 
   /* Populate store */
   populateStore(store, rowSize, lams, vals);
@@ -340,25 +369,9 @@ int main(int argc, char** argv) {
   /* fprintf(stderr, "Graph constructed\n"); */
   /* printMatrix(deps, vals, rowSize); */
 
-  /* Move data to the device */
-  int *dp, *st, *cf, *a1, *a2, *wl;
-  cudaMalloc((void**)&a1, calls*sizeof(int));
-  cudaMalloc((void**)&a2, calls*sizeof(int));
-  cudaMalloc((void**)&cf, calls*sizeof(int));
-  cudaMalloc((void**)&wl, calls*sizeof(int));
-  cudaMalloc((void**)&dp, storeSize);
-  cudaMalloc((void**)&st, storeSize);
-
-  cudaMemcpy(a1, callArg1, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(a2, callArg2, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(cf, callFun, calls*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(dp, deps, storeSize, cudaMemcpyHostToDevice);
-  cudaMemcpy(st, store, storeSize, cudaMemcpyHostToDevice);
-
-  cudaMemset(wl, NUM_NOT_FOUND, calls*sizeof(int));
   /* Run the analysis */
   /* printMatrix(deps, vals, rowSize); */
-  runAnalysis(store, callArg1, callArg2, callFun, deps, worklist, calls, lams, vals, rowSize);
+  runAnalysis(store, callArg1, callArg2, callFun, deps, worklist, newWl, calls, lams, vals, rowSize);
   /* runAnalysis<<<NUM_BLOCK, NUM_THREAD>>>(st, a1, a2, cf, dp, wl, calls, lams, vals, rowSize); */
   /* runAnalysis(st, a1, a2, cf, dp, worklist, calls, lams, vals, rowSize); */
   /* printMatrix(store, vals, rowSize); */
@@ -375,18 +388,13 @@ int main(int argc, char** argv) {
   fclose(resFp);
 
   /* Deallocate memory */
-  cudaFree(a1);
-  cudaFree(a2);
-  cudaFree(cf);
-  cudaFree(dp);
-  cudaFree(st);
-  cudaFree(worklist);
 
   free(callArg1);
   free(callArg2);
   free(callFun);
   free(deps);
   free(store);
+  free(newWl);
 
   return EXIT_SUCCESS;
 }
