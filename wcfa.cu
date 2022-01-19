@@ -1,5 +1,3 @@
-#include <bits/types/FILE.h>
-#include <cstdlib>
 #include <stdio.h>
 #include <string.h>
 #include <iostream>
@@ -209,6 +207,7 @@ __global__ void dRunIter(int st[], int ar1[], int ar2[], int cf[], int dp[], int
 	do
 	{
 		/* let lane 0 fetch [wh, wh + WARP_SIZE - 1] for a warp */
+        /* printf("I've been called here!\n"); */
 		if (threadIdx.x == 0) {
 			headWarp = atomicAdd(&headDev, WARP_SIZE);
 
@@ -258,7 +257,7 @@ void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int
     cudaMalloc((void**)&a2, calls*sizeof(int));
     cudaMalloc((void**)&cf, calls*sizeof(int));
     cudaMalloc((void**)&wl, calls*sizeof(int));
-    cudaMalloc((void**)&newWl, calls * sizeof(bool));
+    cudaMalloc((void**)&dNewWl, calls * sizeof(bool));
     cudaMalloc((void**)&dp, storeSize);
     cudaMalloc((void**)&st, storeSize);
 
@@ -281,6 +280,10 @@ void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int
         cudaMemcpy(newWl, dNewWl, calls * sizeof(bool), cudaMemcpyDeviceToHost);
         cudaDeviceSynchronize();
 
+        /* for(int i = 0; i < calls; i++) { */
+        /*     fprintf(stdout,"%d, ", newWl[i]); */
+        /* } */
+        /* fprintf(stdout, "\n"); */
         wlSize = 0;
         for(int i = 0; i < calls; i++) {
             if(newWl[i]) {
@@ -288,7 +291,9 @@ void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int
                 wlSize++;
             }
         }
+        /* printArray(worklist, calls); */
     }
+    cudaMemcpy(store, st, storeSize, cudaMemcpyDeviceToHost);
     cudaFree(a1);
     cudaFree(a2);
     cudaFree(cf);
