@@ -271,7 +271,7 @@ void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int
     for(int i = 0; i < wlSize; i++) {
         worklist[i] = i;
     }
-    while (wlSize != 0) {
+    while (wlSize > GPU_CUTOFF) {
         cudaMemcpy(wl, worklist, calls * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemset(dNewWl, 0,  calls * sizeof(bool));
         dRunIter<<<NUM_BLOCK, dim3(WARP_SIZE, NUM_WARP_PER_BLOCK)>>>(st, a1, a2, cf, dp,
@@ -293,7 +293,23 @@ void runAnalysis(int store[], int callArg1[], int callArg2[], int callFun[], int
         }
         /* printArray(worklist, calls); */
     }
+
     cudaMemcpy(store, st, storeSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(deps, dp, storeSize, cudaMemcpyDeviceToHost);
+
+    while (wlSize != 0) {
+        memset(newWl, 0, calls * sizeof(bool));
+        runIter(store, callArg1, callArg2, callFun, deps, worklist, newWl, lams, vals,
+                rowSize, wlSize);
+
+        wlSize = 0;
+        for(int i = 0; i < calls; i++) {
+            if(newWl[i]) {
+                worklist[wlSize] = i;
+                wlSize++;
+            }
+        }
+    }
     cudaFree(a1);
     cudaFree(a2);
     cudaFree(cf);
@@ -327,7 +343,7 @@ int main(int argc, char** argv) {
   }
 
   const int vals = 3 * lams;
-  const int rowSize = sceil(((float)lams) / SPARSE_FACTOR);
+  const int rowSize = std::max(10,(int)ceil(((float)lams) / SPARSE_FACTOR));
   const int storeSize = vals * rowSize * sizeof(int);
 
   fprintf (stderr, "Program parameters\n");
@@ -387,19 +403,19 @@ int main(int argc, char** argv) {
   /* printMatrix(callArg1, 1, calls); */
 
   /* Write out the result */
-  fprintf(stderr, "Writing %s\n", outputPath.c_str());
-  FILE* resFp = fopen(outputPath.c_str(), "w");
-  reformatStore(store, vals, rowSize, resFp);
-  fclose(resFp);
+  /* fprintf(stderr, "Writing %s\n", outputPath.c_str()); */
+  /* FILE* resFp = fopen(outputPath.c_str(), "w"); */
+  /* reformatStore(store, vals, rowSize, resFp); */
+  /* fclose(resFp); */
 
   /* Deallocate memory */
 
   free(callArg1);
   free(callArg2);
   free(callFun);
-  free(deps);
-  free(store);
   free(newWl);
+  /* free(deps); */
+  /* free(store); */
 
   return EXIT_SUCCESS;
 }

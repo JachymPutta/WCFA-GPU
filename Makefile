@@ -1,6 +1,6 @@
 CC = nvcc
 
-CFLAGS = util.cpp -g -arch=sm_50 -Wno-deprecated-gpu-targets
+CFLAGS = util.cpp -g -arch=sm_50 -Wno-deprecated-gpu-targets -O3
 
 TARGET = wcfa
 
