@@ -327,14 +327,14 @@ int main(int argc, char** argv) {
   }
 
   const int vals = 3 * lams;
-  const int rowSize = std::max(lams/10, 10);
+  const int rowSize = sceil(((float)lams) / SPARSE_FACTOR);
   const int storeSize = vals * rowSize * sizeof(int);
 
-  /* fprintf (stderr, "Program parameters\n"); */
-  /* fprintf (stderr, "------------------\n"); */
-  /* fprintf (stderr, */
-  /*   "lams: %d\nvars: %d\nvals: %d\ncalls: %d\nterms: %d\n", */
-  /*   lams, vars, vals, calls, lams+vars+calls); */
+  fprintf (stderr, "Program parameters\n");
+  fprintf (stderr, "------------------\n");
+  fprintf (stderr,
+    "lams: %d\nvars: %d\nvals: %d\ncalls: %d\nterms: %d\n",
+    lams, vars, vals, calls, lams+vars+calls);
   /* fprintf (stdout, "Directories: \n Ar1 = %s , Ar2 = %s , Params = %s\n", arg1Path.c_str(), arg2Path.c_str(), paramsPath.c_str()); */
   /* fprintf (stdout, "Directories: \n OUTPUT_DIR = %s , INPUT_DIR = %s , FUN_PATH = %s\n", OUTPUT_DIR, INPUT_DIR, FUN_PATH); */
 

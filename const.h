@@ -8,6 +8,7 @@
 #define NUM_WARP_PER_BLOCK NUM_WARP_PER_SM / NUM_BLOCK_PER_SM
 #define WARP_SIZE 32
 #define NUM_NOT_FOUND -42
+#define SPARSE_FACTOR 25
 
 #define INPUT_DIR "./tests/"
 #define OUTPUT_DIR "./res/"
